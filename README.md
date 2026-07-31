@@ -86,10 +86,14 @@ to a log file rather than to `/dev/null`.
 `uncaughtException` and `unhandledRejection`, funnels through one reporter that prints a
 sentence a person can act on.
 
-**Output is relayed byte for byte.** deemon transmitted the child's exit code as the final byte
-of the stream, which withheld a byte of real output and, when a client disconnected from a
-healthy daemon, reported a byte of build output as an exit code. deemon-ng uses explicit
-framed messages, so output and exit status cannot be confused for one another.
+**Output and exit status travel separately.** deemon sent the child's exit code as the final
+byte of the output stream, so its client withheld the last byte of every chunk and guessed,
+on a 100 ms timer, when to flush it; on close it read that held byte as the process exit code.
+Attempts to make this actually lose data did not succeed, so treat it as fragile by
+construction rather than as a demonstrated bug: `client.end(exitByte)` is followed immediately
+by `client.destroy()`, which can drop the final write, and a one-byte final chunk is held with
+no flush timer at all. deemon-ng frames every message explicitly, so output and exit status
+cannot be mistaken for one another regardless of chunk boundaries.
 
 **`--detach` tells you the truth.** It waits for the daemon to be *listening*, not merely
 spawned, then waits `--settle` (750 ms by default) and confirms the command is still alive. A

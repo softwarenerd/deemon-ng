@@ -54,12 +54,12 @@ describe('a command that fails immediately', () => {
 });
 
 describe('output fidelity', () => {
-	it('relays the final byte of output', async () => {
+	it('relays the final byte of output whatever the chunk boundaries', async () => {
 		const box = sandbox();
 		const result = await run(box, ['node', fixture('exact-bytes.mjs')]);
 
 		assert.equal(result.code, 0);
-		assert.match(result.stdout, /ABC/, 'the last byte must not be consumed as an exit code');
+		assert.match(result.stdout, /ABC/, 'no byte of output may ever be consumed as an exit code');
 	});
 });
 

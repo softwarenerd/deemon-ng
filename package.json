@@ -1,0 +1,45 @@
+{
+	"name": "@softwarenerd/deemon-ng",
+	"version": "1.0.0",
+	"description": "Run a long-lived process in the background and attach to it -- without ever losing the reason it failed.",
+	"keywords": [
+		"daemon",
+		"background",
+		"watch",
+		"build",
+		"deemon"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/softwarenerd/deemon-ng.git"
+	},
+	"bugs": {
+		"url": "https://github.com/softwarenerd/deemon-ng/issues"
+	},
+	"homepage": "https://github.com/softwarenerd/deemon-ng#readme",
+	"author": "Brian Lambert",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"deemon": "dist/cli.js"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"engines": {
+		"node": ">=22"
+	},
+	"scripts": {
+		"build": "tsc",
+		"watch": "tsc --watch",
+		"pretest": "npm run build",
+		"test": "node --test test/*.test.js",
+		"prepublishOnly": "npm run build && npm test"
+	},
+	"devDependencies": {
+		"@types/node": "^22.18.0",
+		"typescript": "^5.8.2"
+	}
+}

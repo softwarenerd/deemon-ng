@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"lib": [
+			"ES2023"
+		],
+		"outDir": "dist",
+		"rootDir": "src",
+		"strict": true,
+		"noImplicitOverride": true,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"exactOptionalPropertyTypes": false,
+		"declaration": true,
+		"sourceMap": true,
+		"types": [
+			"node"
+		]
+	},
+	"include": [
+		"src/**/*.ts"
+	]
+}

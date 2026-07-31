@@ -98,7 +98,9 @@ script that starts five watchers now reports which ones actually came up.
 **`--kill` confirms, and takes the whole tree.** It waits for the daemon to acknowledge instead
 of firing and forgetting, and the child is spawned as a process group leader so the group can be
 signalled at once (`SIGTERM`, then `SIGKILL` after a grace period) with no `tree-kill`
-dependency.
+dependency. It is also idempotent, and it never starts the command in order to stop it --
+deemon's `--kill` spawned a daemon when none was running, launching the very thing it had been
+asked to kill.
 
 **`--restart` waits for the socket to be released** instead of sleeping 500 ms and hoping.
 
@@ -125,7 +127,7 @@ the old `deemon` dependency in the same commit, since both provide the same bina
 ```diff
  "devDependencies": {
 -  "deemon": "^1.13.6",
-+  "@softwarenerd/deemon-ng": "^1.0.0",
++  "@softwarenerd/deemon-ng": "^1.0.1",
  }
 ```
 
@@ -167,7 +169,10 @@ While attached, Ctrl-C detaches and leaves the daemon running; Ctrl-D stops it.
 | 0 | Success, or the command exited successfully |
 | 1 | A failure described on stderr, or the command's own non-zero exit code |
 | 2 | Bad usage |
-| 3 | No daemon is running (`--status`, `--kill`, `--logs`) |
+| 3 | No daemon is running (`--status`, `--logs`) |
+
+`--kill` exits 0 whether or not anything was running: it reports the desired state, not a
+query. Use `--status` to ask.
 
 ### `--status --json`
 

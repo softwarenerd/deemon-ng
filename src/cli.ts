@@ -40,7 +40,7 @@ Exit codes:
   0  success, or the command exited successfully
   1  a failure that is described on stderr, or the command's own non-zero exit code
   2  bad usage
-  3  no daemon is running (--status, --kill, --logs)
+  3  no daemon is running (--status, --logs; --kill always succeeds)
 
 Environment:
   DEEMON_NG_STATE_DIR   Where logs and daemon records are kept

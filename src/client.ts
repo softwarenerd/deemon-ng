@@ -379,12 +379,18 @@ function explainAbsence(command: Command): string[] {
 	];
 }
 
-/** Implements `--kill`. */
+/**
+ * Implements `--kill`.
+ *
+ * Stopping something already stopped succeeds. The desired state has been reached, and a stop
+ * script that runs twice should not fail the second time; `--status` is how you *ask* whether
+ * something is running.
+ */
 async function killDaemon(command: Command): Promise<number> {
 	const socket = await tryConnect(socketPath(command));
 	if (!socket) {
 		notice('No daemon running.');
-		return ExitCode.NoDaemon;
+		return ExitCode.Ok;
 	}
 
 	// Unlike deemon, wait for the daemon to confirm rather than firing and forgetting, so
@@ -419,10 +425,7 @@ async function killDaemon(command: Command): Promise<number> {
 					alreadyStopped = true;
 					process.stdout.write(frame.payload);
 				} else if (frame.type === FrameType.Exited) {
-					settle(
-						alreadyStopped ? ExitCode.NoDaemon : ExitCode.Ok,
-						alreadyStopped ? 'Nothing left to stop.' : 'Killed build daemon.',
-					);
+					settle(ExitCode.Ok, alreadyStopped ? 'Nothing left to stop.' : 'Killed build daemon.');
 					return;
 				}
 			}

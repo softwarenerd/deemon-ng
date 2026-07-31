@@ -174,13 +174,34 @@ describe('stopping a daemon', () => {
 		assert.ok(elapsed < 5_000, `--kill took ${elapsed}ms; it must not wait out the linger window`);
 	});
 
-	it('reports that there was nothing to stop', async () => {
+	it('succeeds when there was nothing to stop', async () => {
 		const box = sandbox();
 		const command = ['node', fixture('watch.mjs'), 'nothing-to-stop'];
 
-		const result = await run(box, ['--kill', ...command]);
-		assert.equal(result.code, 3);
-		assert.match(result.output, /No daemon running\./);
+		// Idempotent on purpose: `build-stop`-style scripts treat any non-zero exit as a
+		// failure, and stopping an already-stopped daemon is not one.
+		const first = await run(box, ['--kill', ...command]);
+		assert.equal(first.code, 0);
+		assert.match(first.output, /No daemon running\./);
+
+		await run(box, ['--detach', ...command]);
+		assert.equal((await run(box, ['--kill', ...command])).code, 0);
+		const third = await run(box, ['--kill', ...command]);
+		assert.equal(third.code, 0, 'a second kill must not fail');
+	});
+
+	it('never starts the command just to kill it', async () => {
+		const box = sandbox();
+		const pidFile = path.join(box.root, 'kill-cold.txt');
+		fs.writeFileSync(pidFile, '');
+		const command = ['node', fixture('record-pid.mjs'), pidFile];
+
+		// deemon's --kill spawned a daemon first when none was running, which started the very
+		// command it was asked to stop.
+		await run(box, ['--kill', ...command]);
+		await delay(500);
+
+		assert.equal(fs.readFileSync(pidFile, 'utf8').trim(), '', 'the command must never have run');
 	});
 });
 

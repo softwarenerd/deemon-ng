@@ -46,6 +46,9 @@ This is why the symptom shows up most on a fresh clone: that is when build scrip
 fail for want of a prerequisite. It also explains why only *some* watchers are affected, and
 why retrying sometimes appears to fix it.
 
+[RATIONALE.md](RATIONALE.md) records why this became a rewrite rather than a patch, including
+what was measured, what could not be proven, and what the rewrite costs.
+
 ## What is different
 
 Every one of these is covered by a test in [`test/regressions.test.js`](test/regressions.test.js).

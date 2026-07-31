@@ -273,6 +273,30 @@ describe('the phrases other tools grep for', () => {
 describe('argument handling', () => {
 	const box = sandbox();
 
+	it('delivers every argument to the command exactly as given', async () => {
+		// The daemon used to spawn with `shell: true` on Windows, where Node joins the argument
+		// array into one unescaped string: an argument containing a space arrived as two, and one
+		// containing `&` was run by cmd.exe as a second command. Nothing between the command line
+		// and the child may reinterpret an argument on any platform.
+		const args = [
+			'watch:all --mode dev',
+			'a&b|c<d>e^f(g)h',
+			'',
+			'C:\\dir\\',
+			'say "hi"',
+			'a\\"b',
+			'a;b,c',
+			'ünïcødé',
+		];
+		const result = await run(box, ['--linger=0', 'node', fixture('print-args.mjs'), ...args]);
+
+		assert.equal(result.code, 0, result.output);
+		// The fixture's line is mixed in with `[deemon]` notices, which also start with a bracket.
+		const printed = result.stdout.split('\n').find(line => line.startsWith('["'));
+		assert.ok(printed, `the fixture printed nothing:\n${result.output}`);
+		assert.deepEqual(JSON.parse(printed), args, result.output);
+	});
+
 	it('accepts a bare -- separator before and after options', async () => {
 		const first = await run(box, ['--', '--detach', 'node', fixture('exact-bytes.mjs')]);
 		assert.equal(first.code, 0, first.output);

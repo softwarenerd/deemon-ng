@@ -11,6 +11,7 @@ import {
 	formatCommand, Frame, FrameDecoder, FrameType, PROTOCOL_VERSION, socketPath, Status,
 } from './protocol.js';
 import { delay, killTree } from './kill.js';
+import { planSpawn } from './spawn.js';
 import { ensureStateDir, logPath, rotateLogIfNeeded, writeRecord } from './state.js';
 
 /** Knobs for {@link runDaemon}. */
@@ -86,12 +87,16 @@ export async function runDaemon(command: Command, options: DaemonOptions): Promi
 		startedAt: startedAt.toISOString(),
 	});
 
-	const child = cp.spawn(command.path, command.args, {
+	// Never `shell: true`. See `planSpawn`: on Windows that hands the argument array to cmd.exe
+	// as one unescaped string, which splits arguments containing spaces and executes the ones
+	// containing `&` or `|`.
+	const plan = planSpawn(command);
+	const child = cp.spawn(plan.file, plan.args, {
 		cwd: command.cwd,
 		// POSIX: become a process group leader so the whole tree can be signalled at once.
-		// Windows: no process groups, but a shell is needed to resolve `npm` and friends.
+		// Windows has no process groups; `killTree` uses `taskkill /T` there instead.
 		detached: process.platform !== 'win32',
-		shell: process.platform === 'win32',
+		windowsVerbatimArguments: plan.windowsVerbatimArguments,
 		windowsHide: true,
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});

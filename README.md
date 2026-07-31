@@ -120,6 +120,15 @@ socket, before spawning anything.
 counts the whole path; deemon-ng uses a 22 character base64url token instead of a 32 character
 hex one, and falls back to the system temp directory rather than surfacing the kernel's `EINVAL`.
 
+**Arguments reach the command intact, including on Windows.** Windows has no argv: a process
+receives one string and splits it itself, so something has to build that string. Passing
+`shell: true` to Node -- which is how this was first written, and how a great deal of Node
+tooling still does it -- makes Node join the argument array with spaces and escape nothing, so
+`deemon npm run "watch:all --mode dev"` arrived at npm as five arguments, and an argument
+containing `&` was executed by cmd.exe as a separate command. deemon-ng builds and quotes the
+command line itself, and only involves cmd.exe when the target is a batch file that cannot be
+run without it.
+
 **Zero runtime dependencies.**
 
 ## Install
@@ -134,7 +143,7 @@ the old `deemon` dependency in the same commit, since both provide the same bina
 ```diff
  "devDependencies": {
 -  "deemon": "^1.13.6",
-+  "@softwarenerd/deemon-ng": "^1.0.1",
++  "@softwarenerd/deemon-ng": "^1.1.0",
  }
 ```
 
@@ -226,12 +235,21 @@ keeps working.
 
 `--wait` is accepted but is no longer needed for the common case; lingering is the default.
 
-### Known limitation
+### Known limitations
 
 A grandchild that puts *itself* into a new process group (`detached: true`) escapes a
 process-group signal and is not stopped by `--kill`. This is the same class of gap that
 `ps`-walking kill utilities have in reverse; ordinary tool chains (`npm`, `gulp`, `tsc`) do not
 do this.
+
+On Windows, `--kill` is abrupt. There is no SIGTERM to send, so the tree is stopped with
+`taskkill /T /F` and the command gets no chance to clean up; POSIX gets a 5 second grace period
+first. For the same reason, the daemon itself can only be stopped cleanly through `--kill` --
+signalling its pid does nothing, and forcing it leaves its child tree orphaned.
+
+Also on Windows, an argument containing `%` reaches a **batch file** (`npm.cmd` and friends)
+after cmd.exe has expanded it, because a Windows command line offers no way to escape a `%`.
+Commands that resolve to a real `.exe` are spawned with no shell in the way and are unaffected.
 
 ## Development
 

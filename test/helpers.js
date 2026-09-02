@@ -29,12 +29,19 @@ export function sandbox() {
 	fs.mkdirSync(stateDir, { recursive: true });
 	fs.mkdirSync(socketDir, { recursive: true });
 
+	// Every knob the tool reads is stripped rather than inherited. The README tells people to
+	// export DEEMON_AUTO_KILL from their shell profile, so a developer who took that advice
+	// would otherwise get different results from CI. Tests that want a knob set it on box.env.
+	const clean = Object.fromEntries(
+		Object.entries(process.env).filter(([name]) => !name.startsWith('DEEMON')),
+	);
+
 	return {
 		root,
 		stateDir,
 		socketDir,
 		env: {
-			...process.env,
+			...clean,
 			DEEMON_NG_STATE_DIR: stateDir,
 			DEEMON_NG_SOCKET_DIR: socketDir,
 		},

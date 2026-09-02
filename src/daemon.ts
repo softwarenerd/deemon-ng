@@ -10,7 +10,7 @@ import {
 	Command, ControlMessage, decodeJson, encodeFrame, encodeJsonFrame, ExitInfo,
 	formatCommand, Frame, FrameDecoder, FrameType, PROTOCOL_VERSION, socketPath, Status,
 } from './protocol.js';
-import { delay, killTree } from './kill.js';
+import { delay, isAlive, killTree } from './kill.js';
 import { planSpawn } from './spawn.js';
 import { ensureStateDir, logPath, rotateLogIfNeeded, writeRecord } from './state.js';
 
@@ -24,6 +24,11 @@ export interface DaemonOptions {
 	readonly lingerMs: number;
 	/** Keep the corpse warm indefinitely until some client collects the exit status. */
 	readonly waitForClient: boolean;
+	/**
+	 * A process this daemon must not outlive, chosen by the client that spawned it. Undefined
+	 * for the default behaviour, where a daemon outlives whatever started it.
+	 */
+	readonly ownerPid: number | undefined;
 }
 
 /** How much child output to keep in memory for replay to newly attached clients. */
@@ -31,6 +36,16 @@ const REPLAY_BUFFER_BYTES = 32 * 1024 * 1024;
 
 /** Linger window after a stop that somebody asked for: just long enough to flush frames. */
 const REQUESTED_EXIT_LINGER_MS = 500;
+
+/**
+ * How often to check that the owner is still alive.
+ *
+ * The check is a signal-free `kill(pid, 0)`, so this is close to free. It also bounds the pid
+ * reuse hazard to this interval: the owner is alive when the client resolves it, so the only
+ * way an unrelated process can inherit its pid and keep this daemon running is to be assigned
+ * that pid within one poll of the owner's death.
+ */
+const OWNER_POLL_MS = 2_000;
 
 /** One chunk of captured output, tagged with the stream it came from. */
 interface BufferedChunk {
@@ -107,6 +122,7 @@ export async function runDaemon(command: Command, options: DaemonOptions): Promi
 	let exit: ExitInfo | undefined;
 	let killRequested = false;
 	let lingerTimer: NodeJS.Timeout | undefined;
+	let ownerTimer: NodeJS.Timeout | undefined;
 	/** Absolute time at which the daemon stops serving a finished child. */
 	let lingerDeadline: number | undefined;
 	/** True once some client has been handed the exit status. */
@@ -159,6 +175,7 @@ export async function runDaemon(command: Command, options: DaemonOptions): Promi
 
 	const shutdown = (): void => {
 		clearTimeout(lingerTimer);
+		clearInterval(ownerTimer);
 		for (const client of clients) {
 			client.socket.destroy();
 		}
@@ -203,6 +220,41 @@ export async function runDaemon(command: Command, options: DaemonOptions): Promi
 		armLinger();
 	});
 
+	/**
+	 * Follows the owner, if the client named one.
+	 *
+	 * The teardown is deliberately the same one `--kill` uses, so the exit is recorded as
+	 * requested and a later client is told the daemon was stopped rather than that it crashed.
+	 * The notice goes to the log as well as to any attached client, because the client that
+	 * would have read it is usually gone by now -- it died along with the owner.
+	 */
+	const ownerPid = options.ownerPid;
+	if (ownerPid !== undefined) {
+		ownerTimer = setInterval(() => {
+			if (isAlive(ownerPid)) {
+				return;
+			}
+			clearInterval(ownerTimer);
+			if (exit) {
+				return;
+			}
+
+			killRequested = true;
+			const text = `[deemon] The process this daemon was tied to (pid ${ownerPid}) has exited. Stopping \`${formatCommand(command)}\`.\n`;
+			log.write(text);
+			const notice = encodeFrame(FrameType.Notice, text);
+			for (const client of clients) {
+				if (client.live) {
+					client.socket.write(notice);
+				}
+			}
+
+			if (child.pid !== undefined) {
+				void killTree(child.pid);
+			}
+		}, OWNER_POLL_MS);
+	}
+
 	server.on('connection', socket => {
 		const client: Client = { socket, live: false };
 		clients.add(client);
@@ -238,6 +290,7 @@ export async function runDaemon(command: Command, options: DaemonOptions): Promi
 						state: exit ? 'exited' : 'running',
 						daemonPid: process.pid,
 						childPid: exit ? undefined : child.pid,
+						ownerPid: options.ownerPid,
 						startedAt: startedAt.toISOString(),
 						uptimeMs: Date.now() - startedAt.getTime(),
 						bufferedBytes: replayBytes,

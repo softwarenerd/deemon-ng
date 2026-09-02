@@ -178,6 +178,62 @@ the same repository get their own daemons.
 
 While attached, Ctrl-C detaches and leaves the daemon running; Ctrl-D stops it.
 
+### Stopping daemons when the window that started them closes
+
+Outliving the shell that started it is the point of a build daemon, and it is the default. It
+stops being the point when the daemons are attached to an editor window open on a checkout:
+close the window, switch branches, open it again, and the old window's daemons are still
+running against the old branch.
+
+`DEEMON_AUTO_KILL=true` ties each daemon to the terminal session that started it. Put it in
+your shell profile:
+
+```sh
+export DEEMON_AUTO_KILL=true
+```
+
+`--detach` then says what it has agreed to:
+
+```
+$ npm run build-start
+[deemon] Detached from build daemon.
+[deemon] Auto-kill armed: this daemon stops when the terminal session that started it (pid 24142) exits.
+```
+
+`--status` repeats it for a daemon you have come back to later, as `Auto-kill armed: this
+daemon stops when pid 24142 exits.` It names the pid and not the reasoning, because the daemon
+was told which process to follow and nothing about why the client picked it.
+
+The owner is the leader of the calling process's terminal session: the shell behind an
+integrated terminal tab, or `login` behind a terminal emulator window. The daemon polls it
+every two seconds and, when it disappears, stops its command with the same teardown `--kill`
+uses, so the exit is recorded as requested and the next client is told the daemon was stopped
+rather than left to guess that it crashed.
+
+Tying the lifetime to the terminal session, rather than asking the editor anything, is what
+makes closing a window distinguishable from reloading one. VS Code and its forks keep terminal
+processes alive across a window reload on purpose and kill them when the window really closes,
+so the session leader is already the signal you want, and no editor setting, extension or
+task is involved.
+
+Two things to know before turning it on:
+
+**It follows the terminal, not the window.** Closing the one terminal tab that started the
+daemons stops them too, as does typing `exit` in it. For `npm run build-start` in a terminal
+you leave open, these are the same event. For a scratch terminal you close straight after, they
+are not.
+
+**A caller with no terminal falls back to the application.** Something spawned by an editor's
+extension host -- an agent running your build script, say -- has no controlling terminal, and a
+window cannot be identified from outside it. `VSCODE_PID` is used instead, which is the editor's
+main process, so those daemons stop when you quit the editor rather than when you close the
+window. `--detach` reports this as "the editor that started it" so the two cases are told apart
+at a glance.
+
+To follow something else entirely, set `DEEMON_NG_OWNER_PID` to a pid. It overrides the
+automatic choice, and a pid that is already gone is ignored rather than treated as an owner who
+has just died.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -199,6 +255,7 @@ query. Use `--status` to ask.
   "state": "running",
   "daemonPid": 54881,
   "childPid": 54899,
+  "ownerPid": 24142,
   "startedAt": "2026-07-31T19:23:17.297Z",
   "uptimeMs": 91240,
   "bufferedBytes": 20481,
@@ -214,6 +271,8 @@ When nothing is running, `state` is `"stopped"` and `lastExit` carries the last 
 
 | Variable | Meaning |
 |---|---|
+| `DEEMON_AUTO_KILL` | Stop a daemon when the terminal session that started it exits |
+| `DEEMON_NG_OWNER_PID` | Stop a daemon when this exact pid exits. Overrides `DEEMON_AUTO_KILL` |
 | `DEEMON_NG_STATE_DIR` | Where logs and daemon records live (default `$XDG_STATE_HOME/deemon-ng`) |
 | `DEEMON_NG_SOCKET_DIR` | Where sockets are created (default `$XDG_RUNTIME_DIR` or the temp directory) |
 | `DEEMON_NG_DEBUG` | Print stack traces for internal errors |

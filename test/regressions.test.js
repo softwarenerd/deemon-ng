@@ -10,6 +10,7 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as cp from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -352,5 +353,108 @@ describe('two checkouts of the same command', () => {
 
 		await run(box, ['--kill', ...command], { cwd: one });
 		await run(box, ['--kill', ...command], { cwd: two });
+	});
+});
+
+describe('owner tracking', () => {
+	/**
+	 * A stand-in for the terminal session, so the assertion is about a process the test can
+	 * actually kill. Tying these tests to the real session leader would mean killing the shell
+	 * running the test suite.
+	 */
+	const sacrificialProcess = () => {
+		const child = cp.spawn(process.execPath, ['-e', 'setInterval(() => { }, 60_000)'], {
+			stdio: 'ignore',
+		});
+		child.unref();
+		return child;
+	};
+
+	it('stops the daemon when the owner exits', async () => {
+		const box = sandbox();
+		const owner = sacrificialProcess();
+		box.env.DEEMON_NG_OWNER_PID = String(owner.pid);
+		const command = ['node', fixture('watch.mjs'), 'owner-exits'];
+
+		const detached = await run(box, ['--detach', ...command]);
+		assert.match(detached.output, /Auto-kill armed: this daemon stops when .* \(pid \d+\) exits\./);
+
+		const running = await status(box, command);
+		assert.equal(running.state, 'running', detached.output);
+		assert.equal(running.ownerPid, owner.pid, 'the daemon must know which process it follows');
+
+		owner.kill('SIGKILL');
+
+		await waitFor(
+			async () => (await status(box, command)).state !== 'running',
+			20_000,
+			'the daemon to stop once its owner was gone',
+		);
+		await waitFor(() => !isAlive(running.childPid), 10_000, 'the supervised child to exit');
+	});
+
+	it('records the stop as requested rather than as a crash', async () => {
+		const box = sandbox();
+		const owner = sacrificialProcess();
+		box.env.DEEMON_NG_OWNER_PID = String(owner.pid);
+		const command = ['node', fixture('watch.mjs'), 'owner-exits-cleanly'];
+
+		await run(box, ['--detach', ...command]);
+		owner.kill('SIGKILL');
+
+		// Wait for the socket to be released, not merely for the child to be gone: a daemon
+		// still lingering answers `--attach` itself, and this is about what the client after
+		// it is told.
+		await waitFor(
+			async () => (await status(box, command)).state === 'stopped',
+			20_000,
+			'the daemon to finish lingering after its owner was gone',
+		);
+
+		// The next client must be able to say why the daemon is gone. Reporting this as an
+		// abrupt death would send someone hunting for a crash that never happened.
+		const after = await run(box, ['--attach', ...command]);
+		assert.match(after.output, /No daemon running\./);
+		assert.match(after.output, /was stopped on request/);
+		assert.doesNotMatch(after.output, /killed abruptly/);
+	});
+
+	it('is off unless it is asked for', async () => {
+		const box = sandbox();
+		const owner = sacrificialProcess();
+		const command = ['node', fixture('watch.mjs'), 'owner-not-requested'];
+
+		// Neither DEEMON_AUTO_KILL nor DEEMON_NG_OWNER_PID is set, so outliving whatever
+		// started it stays the default. That is the whole point of a build daemon.
+		const detached = await run(box, ['--detach', ...command]);
+		assert.doesNotMatch(detached.output, /Auto-kill armed/);
+		assert.equal((await status(box, command)).ownerPid, undefined);
+
+		owner.kill('SIGKILL');
+		await delay(3 * 1_000);
+
+		assert.equal((await status(box, command)).state, 'running', 'the daemon must still be running');
+		await stop(box, command);
+	});
+
+	it('ignores an owner that is already gone', async () => {
+		const box = sandbox();
+		const owner = sacrificialProcess();
+		const pid = owner.pid;
+		owner.kill('SIGKILL');
+		await waitFor(() => !isAlive(pid), 10_000, 'the stand-in to exit');
+
+		// A stale pid in the environment must not make the daemon stop the moment it starts,
+		// nor tie it to whatever process inherits that pid later.
+		box.env.DEEMON_NG_OWNER_PID = String(pid);
+		const command = ['node', fixture('watch.mjs'), 'owner-already-gone'];
+
+		await run(box, ['--detach', ...command]);
+		await delay(3 * 1_000);
+
+		const running = await status(box, command);
+		assert.equal(running.state, 'running');
+		assert.equal(running.ownerPid, undefined);
+		await stop(box, command);
 	});
 });

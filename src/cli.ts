@@ -6,6 +6,7 @@
 
 import { ClientOptions, runClient } from './client.js';
 import { runDaemon } from './daemon.js';
+import { inheritedOwnerPid } from './owner.js';
 import { Command } from './protocol.js';
 import { DeemonError, ExitCode, printError } from './report.js';
 
@@ -43,6 +44,8 @@ Exit codes:
   3  no daemon is running (--status, --logs; --kill always succeeds)
 
 Environment:
+  DEEMON_AUTO_KILL      Stop a daemon when the terminal session that started it exits
+  DEEMON_NG_OWNER_PID   Stop a daemon when this specific pid exits
   DEEMON_NG_STATE_DIR   Where logs and daemon records are kept
   DEEMON_NG_SOCKET_DIR  Where sockets are created
   DEEMON_NG_DEBUG       Print stack traces for internal errors
@@ -184,7 +187,11 @@ async function main(): Promise<number> {
 	validate(options);
 
 	if (options.daemon) {
-		await runDaemon(command, { lingerMs: options.lingerMs, waitForClient: options.waitForClient });
+		await runDaemon(command, {
+			lingerMs: options.lingerMs,
+			waitForClient: options.waitForClient,
+			ownerPid: inheritedOwnerPid(),
+		});
 		// The daemon exits from its own shutdown path once its child is gone and the linger
 		// window has closed. Returning here would tear down the server it just bound.
 		return new Promise<number>(() => { });

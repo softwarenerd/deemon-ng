@@ -11,6 +11,7 @@ import * as readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { describeExit, formatDuration, probe } from './daemon.js';
 import { delay } from './kill.js';
+import { OWNER_PID_VAR, resolveOwner } from './owner.js';
 import {
 	Command, ControlMessage, decodeJson, encodeJsonFrame, ExitInfo, formatCommand,
 	Frame, FrameDecoder, FrameType, socketPath, Status,
@@ -123,6 +124,10 @@ function selfPath(): string {
  * Its stdio goes to a log file rather than to `/dev/null`. deemon used `stdio: 'ignore'`,
  * which meant a daemon that crashed during bootstrap left no trace anywhere and the client
  * could only report that the socket was missing.
+ *
+ * The owner, if there is one, is resolved here and passed down as an already-decided pid. The
+ * daemon cannot work it out for itself: it is about to be detached from this terminal, which
+ * is the very thing it needs to identify.
  */
 function spawnDaemon(command: Command, options: ClientOptions): cp.ChildProcess {
 	ensureStateDir();
@@ -134,10 +139,22 @@ function spawnDaemon(command: Command, options: ClientOptions): cp.ChildProcess 
 		}
 		args.push(command.path, ...command.args);
 
+		// The client is the only authority on this, so the variable is always written, never
+		// merely left alone. Passing our own environment through would hand the daemon a stale
+		// or rejected pid -- a dead one included, which would stop it the moment it started.
+		const env = { ...process.env };
+		const owner = resolveOwner();
+		if (owner) {
+			env[OWNER_PID_VAR] = String(owner.pid);
+		} else {
+			delete env[OWNER_PID_VAR];
+		}
+
 		return cp.spawn(process.execPath, args, {
 			cwd: command.cwd,
 			detached: true,
 			stdio: ['ignore', log, log],
+			env,
 		});
 	} finally {
 		fs.closeSync(log);
@@ -497,6 +514,12 @@ async function detachDaemon(command: Command, options: ClientOptions): Promise<n
 	}
 
 	notice('Detached from build daemon.');
+	const owner = resolveOwner();
+	if (owner) {
+		// Worth saying out loud: a daemon that is going to stop on its own is a surprise if you
+		// did not know the variable was set, and silence is how you find out the hard way.
+		notice(`Auto-kill armed: this daemon stops when ${owner.how} (pid ${owner.pid}) exits.`);
+	}
 	if (options.waitForClient) {
 		notice('Daemon will wait for a client to connect before exiting.');
 	}
@@ -532,6 +555,12 @@ async function showStatus(command: Command, options: ClientOptions): Promise<num
 	if (status?.state === 'running') {
 		notice(`\`${formatCommand(command)}\` is running.`);
 		notice(`Daemon pid ${status.daemonPid}, child pid ${status.childPid}, up ${formatDuration(status.uptimeMs)}, ${status.clients} client(s).`);
+		if (status.ownerPid !== undefined) {
+			// Only the pid, not the phrase `--detach` prints: the daemon was told which process
+			// to follow and nothing about why, and a later client has no way to recover the
+			// reasoning of a client that has long since exited.
+			notice(`Auto-kill armed: this daemon stops when pid ${status.ownerPid} exits.`);
+		}
 		notice(`Log: ${status.logPath}`);
 		return ExitCode.Ok;
 	}

@@ -80,6 +80,8 @@ export interface Status {
 	readonly state: 'running' | 'exited';
 	readonly daemonPid: number;
 	readonly childPid: number | undefined;
+	/** The process this daemon will not outlive, or undefined when it will outlive everything. */
+	readonly ownerPid: number | undefined;
 	readonly startedAt: string;
 	readonly uptimeMs: number;
 	readonly bufferedBytes: number;

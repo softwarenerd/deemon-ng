@@ -22,11 +22,11 @@ export interface Owner {
  */
 export const OWNER_PID_VAR = 'DEEMON_NG_OWNER_PID';
 
-/** Asks for owner tracking in the first place. */
+/** Turns owner tracking off, which is otherwise on. */
 const AUTO_KILL_VAR = 'DEEMON_AUTO_KILL';
 
-/** Values of {@link AUTO_KILL_VAR} that mean yes. Anything else, including unset, means no. */
-const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+/** Values of {@link AUTO_KILL_VAR} that mean no. Anything else, including unset, means yes. */
+const FALSY = new Set(['0', 'false', 'no', 'off']);
 
 /** Cached across a run: a process cannot change which session it belongs to. */
 let cached: Owner | undefined;
@@ -36,10 +36,10 @@ let resolved = false;
  * Decides which process this daemon should not outlive, or undefined to live forever as
  * before.
  *
- * Owner tracking is off unless asked for, because outliving the shell that started it is the
- * entire point of a build daemon most of the time. It becomes a nuisance in one specific
- * situation -- an editor window open on a checkout, being closed and reopened on another
- * branch -- which is what `DEEMON_AUTO_KILL` is for.
+ * Owner tracking is on unless turned off, because a daemon that outlives the window it was
+ * started from -- an editor open on a checkout, closed and reopened on another branch -- keeps
+ * running against the wrong tree. `DEEMON_AUTO_KILL=false` restores the old behavior of
+ * outliving the shell that started it.
  */
 export function resolveOwner(): Owner | undefined {
 	if (!resolved) {
@@ -65,7 +65,7 @@ function chooseOwner(): Owner | undefined {
 			: undefined;
 	}
 
-	if (!TRUTHY.has((process.env[AUTO_KILL_VAR] ?? '').trim().toLowerCase())) {
+	if (FALSY.has((process.env[AUTO_KILL_VAR] ?? '').trim().toLowerCase())) {
 		return undefined;
 	}
 
@@ -154,7 +154,7 @@ function processTable(): Map<number, ProcessEntry> {
 			stdio: ['ignore', 'pipe', 'ignore'],
 		});
 	} catch {
-		// No `ps`, or it failed. Owner tracking is an opt-in convenience, and not having it is
+		// No `ps`, or it failed. Owner tracking is a convenience, and not having it is
 		// no reason to refuse to start a daemon.
 		return table;
 	}

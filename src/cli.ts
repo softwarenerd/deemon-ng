@@ -44,7 +44,8 @@ Exit codes:
   3  no daemon is running (--status, --logs; --kill always succeeds)
 
 Environment:
-  DEEMON_AUTO_KILL      Stop a daemon when the terminal session that started it exits
+  DEEMON_AUTO_KILL      Set to false to keep a daemon running after the terminal session
+                        that started it exits (default true)
   DEEMON_NG_OWNER_PID   Stop a daemon when this specific pid exits
   DEEMON_NG_STATE_DIR   Where logs and daemon records are kept
   DEEMON_NG_SOCKET_DIR  Where sockets are created

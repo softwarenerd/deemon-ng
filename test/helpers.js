@@ -29,9 +29,8 @@ export function sandbox() {
 	fs.mkdirSync(stateDir, { recursive: true });
 	fs.mkdirSync(socketDir, { recursive: true });
 
-	// Every knob the tool reads is stripped rather than inherited. The README tells people to
-	// export DEEMON_AUTO_KILL from their shell profile, so a developer who took that advice
-	// would otherwise get different results from CI. Tests that want a knob set it on box.env.
+	// Every knob the tool reads is stripped rather than inherited, so a developer's shell
+	// profile cannot make results differ from CI. Tests that want a knob set it on box.env.
 	const clean = Object.fromEntries(
 		Object.entries(process.env).filter(([name]) => !name.startsWith('DEEMON')),
 	);
@@ -42,6 +41,9 @@ export function sandbox() {
 		socketDir,
 		env: {
 			...clean,
+			// Auto-kill is on by default, but only arms under a terminal, so leaving it on would
+			// make a run from a terminal behave differently from CI.
+			DEEMON_AUTO_KILL: 'false',
 			DEEMON_NG_STATE_DIR: stateDir,
 			DEEMON_NG_SOCKET_DIR: socketDir,
 		},

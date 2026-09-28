@@ -419,13 +419,14 @@ describe('owner tracking', () => {
 		assert.doesNotMatch(after.output, /killed abruptly/);
 	});
 
-	it('is off unless it is asked for', async () => {
+	it('is off when turned off', async () => {
 		const box = sandbox();
 		const owner = sacrificialProcess();
 		const command = ['node', fixture('watch.mjs'), 'owner-not-requested'];
 
-		// Neither DEEMON_AUTO_KILL nor DEEMON_NG_OWNER_PID is set, so outliving whatever
-		// started it stays the default. That is the whole point of a build daemon.
+		// DEEMON_AUTO_KILL=false and no DEEMON_NG_OWNER_PID, so the daemon must outlive
+		// whatever started it.
+		box.env.DEEMON_AUTO_KILL = 'false';
 		const detached = await run(box, ['--detach', ...command]);
 		assert.doesNotMatch(detached.output, /Auto-kill armed/);
 		assert.equal((await status(box, command)).ownerPid, undefined);

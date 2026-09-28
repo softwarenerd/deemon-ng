@@ -320,6 +320,95 @@ npm run watch      # tsc --watch
 
 Requires Node 22 or newer.
 
+### Releasing
+
+The package is published to npm as `@softwarenerd/deemon-ng`.
+
+**Once per machine: sign in to npm.**
+
+```sh
+npm login          # opens https://www.npmjs.com/login in a browser
+npm whoami         # should print softwarenerd
+```
+
+The account has two-factor authentication on, so `npm login` asks for a code from the
+authenticator app, and so does every `npm publish`. The session is saved in `~/.npmrc` and
+lasts until `npm logout`.
+
+**Every release.**
+
+1. Start from an up-to-date, clean `main`:
+
+   ```sh
+   git switch main
+   git pull
+   git status         # must be clean; npm version refuses to run otherwise
+   ```
+
+2. Make sure it builds and passes:
+
+   ```sh
+   npm install
+   npm test
+   ```
+
+3. Pick the version by what changed since the last tag (`git log $(git describe --tags --abbrev=0)..`):
+
+   - `patch` for fixes that change no documented behavior
+   - `minor` for new options, variables or output that existing users don't have to act on
+   - `major` for anything that makes an existing command line, exit code, `--status --json`
+     field or environment variable behave differently
+
+4. Bump it:
+
+   ```sh
+   npm version minor  # or patch, or major
+   ```
+
+   This updates `package.json` and `package-lock.json` together, commits them with the bare
+   version as the message (`1.3.0`), and tags the commit `v1.3.0`. Use it rather than editing
+   the version by hand, which is how the lock file ends up out of sync.
+
+5. Check what will be published. Only `dist/`, `README.md`, `LICENSE` and `package.json`
+   should be listed:
+
+   ```sh
+   npm pack --dry-run
+   ```
+
+6. Push the commit and the tag:
+
+   ```sh
+   git push --follow-tags
+   ```
+
+7. Publish, entering the authenticator code when asked:
+
+   ```sh
+   npm publish --access public
+   ```
+
+   `prepublishOnly` builds and runs the tests again first, and the publish is abandoned if
+   they fail. `--access public` is needed because scoped packages are private by default; it
+   is harmless after the first release. The code can also be given up front with
+   `--otp=123456`.
+
+8. Confirm it arrived:
+
+   ```sh
+   npm view @softwarenerd/deemon-ng version
+   ```
+
+9. Optionally, turn the tag into a GitHub release with notes generated from the commits:
+
+   ```sh
+   gh release create v1.3.0 --generate-notes
+   ```
+
+If the publish fails after the tag has been pushed, fix the problem on `main` and release the
+next patch version rather than moving the tag. npm never allows a version number to be
+reused, even after `npm unpublish`.
+
 ## License
 
 MIT. Portions of the command-line surface and wire semantics are derived from
